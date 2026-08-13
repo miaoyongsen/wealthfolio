@@ -11,7 +11,8 @@ use crate::errors::MarketDataError;
 use crate::models::{Coverage, InstrumentKind, ProviderInstrument, Quote, QuoteContext, SearchResult};
 use crate::provider::{MarketDataProvider, ProviderCapabilities, RateLimit};
 
-const PROVIDER_ID: &str = "EASTMONEY";
+// Keep the persisted provider ID stable. Existing installations and assets store TENCENT.
+const PROVIDER_ID: &str = "TENCENT";
 const QUOTE_URL: &str = "https://push2.eastmoney.com/api/qt/stock/get";
 const KLINE_URL: &str = "https://push2his.eastmoney.com/api/qt/stock/kline/get";
 const SEARCH_URL: &str = "https://searchapi.eastmoney.com/api/suggest/get";
@@ -29,7 +30,7 @@ impl TencentProvider {
     fn extract_symbol(instrument: &ProviderInstrument) -> Result<String, MarketDataError> {
         match instrument {
             ProviderInstrument::EquitySymbol { symbol } => Ok(symbol.to_string()),
-            _ => Err(MarketDataError::UnsupportedAssetType(format!("EASTMONEY only supports equities, got: {:?}", instrument))),
+            _ => Err(MarketDataError::UnsupportedAssetType(format!("TENCENT only supports equities, got: {:?}", instrument))),
         }
     }
 
@@ -108,7 +109,7 @@ impl MarketDataProvider for TencentProvider {
     fn id(&self) -> &'static str { PROVIDER_ID }
     fn priority(&self) -> u8 { 2 }
     fn capabilities(&self) -> ProviderCapabilities {
-        ProviderCapabilities { instrument_kinds: &[InstrumentKind::Equity], coverage: Coverage { equity_mic_allow: Some(&["XSHG", "XSHE", "XHKG"]), equity_mic_deny: None, allow_unknown_mic: false, metal_quote_ccy_allow: None }, supports_latest: true, supports_historical: true, supports_search: true, supports_profile: false, supports_dividends: false }
+        ProviderCapabilities { instrument_kinds: &[InstrumentKind::Equity], coverage: Coverage { equity_mic_allow: Some(&["XSHG", "XSHE", "XHKG"]), equity_mic_deny: None, allow_unknown_mic: true, metal_quote_ccy_allow: None }, supports_latest: true, supports_historical: true, supports_search: true, supports_profile: false, supports_dividends: false }
     }
     fn rate_limit(&self) -> RateLimit { RateLimit { requests_per_minute: 120, max_concurrency: 3, min_delay: Duration::from_millis(100) } }
 
@@ -150,7 +151,7 @@ mod tests {
     use rust_decimal_macros::dec;
     use std::sync::Arc;
 
-    #[test] fn provider_id_is_eastmoney() { assert_eq!(TencentProvider::new().id(), "EASTMONEY"); }
+    #[test] fn provider_id_remains_compatible() { assert_eq!(TencentProvider::new().id(), "TENCENT"); }
     #[test] fn parses_a_share_quote() {
         let body = QuoteResponse { rc: 0, data: Some(QuoteData { close: Some(1050), high: Some(1055), low: Some(1040), open: Some(1045), volume: Some(123456), timestamp: Some(1_700_000_000) }) };
         let quote = TencentProvider::parse_quote("1.600000", body).unwrap();

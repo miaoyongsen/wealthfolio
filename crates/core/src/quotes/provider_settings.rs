@@ -94,7 +94,7 @@ impl ProviderCapabilities {
                     "Dividends".to_string(),
                 ],
             }),
-            "EASTMONEY" | "TENCENT" => Some(Self {
+            "TENCENT" => Some(Self {
                 instruments: "Stocks".to_string(),
                 coverage: "A股 • 港股".to_string(),
                 features: vec![

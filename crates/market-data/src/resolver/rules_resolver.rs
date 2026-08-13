@@ -76,6 +76,10 @@ impl RulesResolver {
                 Some("XSHG") => "1",
                 Some("XSHE") => "0",
                 Some("XHKG") => "116",
+                // Older locally-created A-share assets may not have a MIC. Infer the
+                // exchange from the standard six-digit code in that case.
+                None if ticker.len() == 6 && matches!(ticker.chars().next(), Some('5' | '6' | '9')) => "1",
+                None if ticker.len() == 6 && matches!(ticker.chars().next(), Some('0' | '1' | '2' | '3')) => "0",
                 _ => return None,
             };
             // HK tickers must be 5-digit zero-padded (e.g. "700" -> "00700").

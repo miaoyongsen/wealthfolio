@@ -96,7 +96,6 @@ const PROVIDER_SYMBOL_HINTS: Record<string, string> = {
   YAHOO: "e.g. AAPL, LYMS.DE",
   COINGECKO: "e.g. bitcoin, ethereum",
   TWELVEDATA: "e.g. AAPL, EUR/USD",
-  EASTMONEY: "e.g. 1.600000, 0.000001, 116.00700",
   TENCENT: "e.g. 1.600000, 0.000001, 116.00700",
 };
 

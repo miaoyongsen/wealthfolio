@@ -298,9 +298,8 @@ impl MarketDataClient {
                 // European bond pricing via Börse Frankfurt (no API key)
                 Ok(Some(Arc::new(BoerseFrankfurtProvider::new())))
             }
-            DATA_SOURCE_EASTMONEY | DATA_SOURCE_TENCENT => {
+            DATA_SOURCE_TENCENT => {
                 // Eastmoney public quotes for A-shares and HK stocks (no API key).
-                // TENCENT is retained as a compatibility alias for saved assets.
                 Ok(Some(Arc::new(TencentProvider::new())))
             }
             _ => {
