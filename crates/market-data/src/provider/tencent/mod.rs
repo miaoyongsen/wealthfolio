@@ -103,7 +103,7 @@ impl TencentProvider {
         // Timestamp field (index 30): "20260812153000" in China Standard Time (UTC+8).
         let timestamp = fields
             .get(30)
-            .filter(|s| s.len() >= &14)
+            .filter(|s| s.len() >= 14)
             .and_then(|s| {
                 chrono::NaiveDateTime::parse_from_str(&s[..14], "%Y%m%d%H%M%S")
                     .ok()
