@@ -43,7 +43,7 @@ use wealthfolio_market_data::{
     ExchangeMap, FinnhubProvider, FixtureProvider, MarketDataAppProvider, MetalPriceApiProvider,
     OpenFigiProvider, ProviderId, ProviderRegistry, Quote as MarketQuote, QuoteContext,
     QuoteIdentifiers, ResolverChain, SearchResult as MarketSearchResult, SplitEvent,
-    UsTreasuryCalcProvider, YahooProvider,
+    TencentProvider, UsTreasuryCalcProvider, YahooProvider,
 };
 
 /// Market data error types.
@@ -297,6 +297,10 @@ impl MarketDataClient {
             DATA_SOURCE_BOERSE_FRANKFURT => {
                 // European bond pricing via Börse Frankfurt (no API key)
                 Ok(Some(Arc::new(BoerseFrankfurtProvider::new())))
+            }
+            DATA_SOURCE_TENCENT => {
+                // Tencent public quotes for A-shares and HK stocks (no API key)
+                Ok(Some(Arc::new(TencentProvider::new())))
             }
             _ => {
                 warn!("Unknown provider ID: {}", provider_id);

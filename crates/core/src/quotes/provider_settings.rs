@@ -94,6 +94,16 @@ impl ProviderCapabilities {
                     "Dividends".to_string(),
                 ],
             }),
+            "TENCENT" => Some(Self {
+                instruments: "Stocks".to_string(),
+                coverage: "A股 • 港股".to_string(),
+                features: vec![
+                    "Real-time".to_string(),
+                    "Historical".to_string(),
+                    "Search".to_string(),
+                    "No API key".to_string(),
+                ],
+            }),
             "BOERSE_FRANKFURT" => Some(Self {
                 instruments: "Stocks • ETFs • Bonds".to_string(),
                 coverage: "XETR • XFRA".to_string(),

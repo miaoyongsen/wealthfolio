@@ -96,6 +96,7 @@ const PROVIDER_SYMBOL_HINTS: Record<string, string> = {
   YAHOO: "e.g. AAPL, LYMS.DE",
   COINGECKO: "e.g. bitcoin, ethereum",
   TWELVEDATA: "e.g. AAPL, EUR/USD",
+  TENCENT: "e.g. sh600000, sz000001, hk00700",
 };
 
 function getSymbolPlaceholder(provider: string): string {

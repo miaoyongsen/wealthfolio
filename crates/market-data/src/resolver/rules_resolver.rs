@@ -69,6 +69,25 @@ impl RulesResolver {
             });
         }
 
+        // Tencent uses market-prefixed symbols: sh600000, sz000001, hk00700.
+        if provider.as_ref() == "TENCENT" {
+            let prefix = match mic.as_deref() {
+                Some("XSHG") => "sh",
+                Some("XSHE") => "sz",
+                Some("XHKG") => "hk",
+                _ => return None,
+            };
+            // HK tickers must be 5-digit zero-padded (e.g. "700" -> "00700").
+            let code = if prefix == "hk" {
+                format!("{:0>5}", ticker)
+            } else {
+                ticker.to_string()
+            };
+            return Some(ProviderInstrument::EquitySymbol {
+                symbol: Arc::from(format!("{}{}", prefix, code)),
+            });
+        }
+
         let provider_ticker = if provider.as_ref() == "YAHOO" {
             yahoo_equity_base_to_provider(ticker)
         } else {
