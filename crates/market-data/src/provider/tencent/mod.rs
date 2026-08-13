@@ -149,7 +149,14 @@ impl TencentProvider {
             count
         );
 
-        let response = self.client.get(&url).send().await?;
+        // Tencent returns gzip-encoded bodies when the client advertises it;
+        // reqwest is built without the gzip feature, so request plain identity.
+        let response = self
+            .client
+            .get(&url)
+            .header(reqwest::header::ACCEPT_ENCODING, "identity")
+            .send()
+            .await?;
         if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
             return Err(MarketDataError::RateLimited {
                 provider: PROVIDER_ID.to_string(),
@@ -284,7 +291,12 @@ impl MarketDataProvider for TencentProvider {
         let symbol = Self::extract_symbol(&instrument)?;
         let url = format!("{}{}", QUOTE_URL, symbol);
 
-        let response = self.client.get(&url).send().await?;
+        let response = self
+            .client
+            .get(&url)
+            .header(reqwest::header::ACCEPT_ENCODING, "identity")
+            .send()
+            .await?;
         if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
             return Err(MarketDataError::RateLimited {
                 provider: PROVIDER_ID.to_string(),
@@ -328,7 +340,12 @@ impl MarketDataProvider for TencentProvider {
 
     async fn search(&self, query: &str) -> Result<Vec<SearchResult>, MarketDataError> {
         let url = format!("{}{}&t=all", SEARCH_URL, urlencoding::encode(query));
-        let response = self.client.get(&url).send().await?;
+        let response = self
+            .client
+            .get(&url)
+            .header(reqwest::header::ACCEPT_ENCODING, "identity")
+            .send()
+            .await?;
         if !response.status().is_success() {
             return Err(MarketDataError::ProviderError {
                 provider: PROVIDER_ID.to_string(),
