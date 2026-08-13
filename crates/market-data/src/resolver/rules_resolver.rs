@@ -69,22 +69,23 @@ impl RulesResolver {
             });
         }
 
-        // Tencent uses market-prefixed symbols: sh600000, sz000001, hk00700.
-        if provider.as_ref() == "TENCENT" {
+        // Eastmoney uses numeric market IDs: Shanghai 1, Shenzhen 0, Hong Kong 116.
+        // TENCENT remains accepted so existing saved asset configurations migrate cleanly.
+        if matches!(provider.as_ref(), "EASTMONEY" | "TENCENT") {
             let prefix = match mic.as_deref() {
-                Some("XSHG") => "sh",
-                Some("XSHE") => "sz",
-                Some("XHKG") => "hk",
+                Some("XSHG") => "1",
+                Some("XSHE") => "0",
+                Some("XHKG") => "116",
                 _ => return None,
             };
             // HK tickers must be 5-digit zero-padded (e.g. "700" -> "00700").
-            let code = if prefix == "hk" {
+            let code = if prefix == "116" {
                 format!("{:0>5}", ticker)
             } else {
                 ticker.to_string()
             };
             return Some(ProviderInstrument::EquitySymbol {
-                symbol: Arc::from(format!("{}{}", prefix, code)),
+                symbol: Arc::from(format!("{}.{}", prefix, code)),
             });
         }
 
