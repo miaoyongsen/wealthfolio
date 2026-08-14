@@ -135,6 +135,53 @@ impl TencentProvider {
         quotes.sort_by_key(|quote| quote.timestamp);
         Ok(quotes)
     }
+
+    /// Fetch daily CNY reference rates from Eastmoney's domestic FX market.
+    async fn fetch_fx_quotes(&self, from: &str, to: &str, start: NaiveDate, end: NaiveDate) -> Result<Vec<Quote>, MarketDataError> {
+        if !to.eq_ignore_ascii_case("CNY") || from.len() != 3 {
+            return Err(MarketDataError::NotSupported {
+                provider: PROVIDER_ID.to_string(),
+                operation: format!("FX pair {}/{}", from, to),
+            });
+        }
+        let symbol = format!("120.{}CNYC", from.to_ascii_uppercase());
+        let begin = start.format("%Y%m%d").to_string();
+        let finish = end.format("%Y%m%d").to_string();
+        let response = self.checked_response(self.client.get(KLINE_URL).query(&[
+            ("secid", symbol.as_str()),
+            ("klt", "101"),
+            ("fqt", "1"),
+            ("beg", begin.as_str()),
+            ("end", finish.as_str()),
+            ("lmt", "50000"),
+            ("iscca", "1"),
+            ("fields1", "f1,f2,f3,f4,f5,f6,f7,f8"),
+            ("fields2", "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f62,f63,f64"),
+            ("ut", "f057cbcbce2a86e2866ab8877db1d059"),
+            ("forcect", "1"),
+        ])).await?;
+        let body: KlineResponse = response.json().await.map_err(|e| Self::provider_error(format!("Failed to parse Eastmoney FX response: {}", e)))?;
+        if body.rc != 0 {
+            return Err(Self::provider_error(format!("Eastmoney FX API error {}: {}", body.rc, body.message)));
+        }
+        let rows = body.data.ok_or_else(|| MarketDataError::SymbolNotFound(symbol.clone()))?.klines;
+        let mut quotes = Vec::with_capacity(rows.len());
+        for raw in rows {
+            let row: Vec<&str> = raw.split(',').collect();
+            if row.len() < 5 { continue; }
+            let date = NaiveDate::parse_from_str(row[0], "%Y-%m-%d").map_err(|_| MarketDataError::ValidationFailed { message: format!("Invalid FX date '{}'", row[0]) })?;
+            if date < start || date > end { continue; }
+            let parse = |value: &str| -> Option<Decimal> { value.parse().ok() };
+            let close = parse(row[2]).ok_or_else(|| MarketDataError::ValidationFailed { message: format!("Invalid FX close '{}'", row[2]) })?;
+            let timestamp = date.and_hms_opt(12, 0, 0).map(|dt| Utc.from_utc_datetime(&dt)).unwrap_or_else(Utc::now);
+            quotes.push(Quote { timestamp, open: parse(row[1]), high: parse(row[3]), low: parse(row[4]), close, volume: None, currency: "CNY".to_string(), source: PROVIDER_ID.to_string() });
+        }
+        if quotes.is_empty() {
+            return Err(MarketDataError::NoDataForRange);
+        }
+        quotes.sort_by_key(|quote| quote.timestamp);
+        Ok(quotes)
+    }
 }
 
 impl Default for TencentProvider { fn default() -> Self { Self::new() } }
@@ -144,11 +191,17 @@ impl MarketDataProvider for TencentProvider {
     fn id(&self) -> &'static str { PROVIDER_ID }
     fn priority(&self) -> u8 { 2 }
     fn capabilities(&self) -> ProviderCapabilities {
-        ProviderCapabilities { instrument_kinds: &[InstrumentKind::Equity], coverage: Coverage { equity_mic_allow: Some(&["XSHG", "XSHE", "XHKG"]), equity_mic_deny: None, allow_unknown_mic: true, metal_quote_ccy_allow: None }, supports_latest: true, supports_historical: true, supports_search: true, supports_profile: false, supports_dividends: false }
+        ProviderCapabilities { instrument_kinds: &[InstrumentKind::Equity, InstrumentKind::Fx], coverage: Coverage { equity_mic_allow: Some(&["XSHG", "XSHE", "XHKG"]), equity_mic_deny: None, allow_unknown_mic: true, metal_quote_ccy_allow: None }, supports_latest: true, supports_historical: true, supports_search: true, supports_profile: false, supports_dividends: false }
     }
     fn rate_limit(&self) -> RateLimit { RateLimit { requests_per_minute: 120, max_concurrency: 3, min_delay: Duration::from_millis(100) } }
 
     async fn get_latest_quote(&self, _context: &QuoteContext, instrument: ProviderInstrument) -> Result<Quote, MarketDataError> {
+        if let ProviderInstrument::FxPair { from, to } = &instrument {
+            let end = Utc::now().date_naive();
+            let start = end - chrono::Duration::days(14);
+            let mut quotes = self.fetch_fx_quotes(from, to, start, end).await?;
+            return quotes.pop().ok_or(MarketDataError::NoDataForRange);
+        }
         let symbol = Self::extract_symbol(&instrument)?;
         let response = self.checked_response(self.client.get(QUOTE_URL).query(&[("secid", symbol.as_str()), ("fields", "f43,f44,f45,f46,f47,f57,f58,f60,f86")])).await?;
         let body = response.json().await.map_err(|e| Self::provider_error(format!("Failed to parse quote response: {}", e)))?;
@@ -156,6 +209,9 @@ impl MarketDataProvider for TencentProvider {
     }
 
     async fn get_historical_quotes(&self, _context: &QuoteContext, instrument: ProviderInstrument, start: DateTime<Utc>, end: DateTime<Utc>) -> Result<Vec<Quote>, MarketDataError> {
+        if let ProviderInstrument::FxPair { from, to } = &instrument {
+            return self.fetch_fx_quotes(from, to, start.date_naive(), end.date_naive()).await;
+        }
         let symbol = Self::extract_symbol(&instrument)?;
         self.fetch_kline(&symbol, start.date_naive(), end.date_naive()).await
     }

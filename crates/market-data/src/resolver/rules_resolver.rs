@@ -153,6 +153,11 @@ impl RulesResolver {
     ) -> Option<ProviderInstrument> {
         match provider.as_ref() {
             "YAHOO" => {
+                // CNY pairs use the domestic Eastmoney feed. Avoid waiting for
+                // Yahoo to time out on mainland China deployments.
+                if quote.as_ref().eq_ignore_ascii_case("CNY") {
+                    return None;
+                }
                 // Yahoo uses "EURUSD=X" format
                 Some(ProviderInstrument::FxSymbol {
                     symbol: Arc::from(format!("{}{}=X", base, quote)),
@@ -165,6 +170,10 @@ impl RulesResolver {
                     to: quote.clone(),
                 })
             }
+            "TENCENT" => Some(ProviderInstrument::FxPair {
+                from: base.clone(),
+                to: quote.clone(),
+            }),
             _ => None,
         }
     }
