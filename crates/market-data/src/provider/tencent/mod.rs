@@ -29,9 +29,44 @@ impl TencentProvider {
 
     fn extract_symbol(instrument: &ProviderInstrument) -> Result<String, MarketDataError> {
         match instrument {
-            ProviderInstrument::EquitySymbol { symbol } => Ok(symbol.to_string()),
+            ProviderInstrument::EquitySymbol { symbol } => Self::normalize_symbol(symbol),
             _ => Err(MarketDataError::UnsupportedAssetType(format!("TENCENT only supports equities, got: {:?}", instrument))),
         }
+    }
+
+    /// Convert persisted Tencent/Yahoo/plain symbols to Eastmoney's `market.code` secid.
+    /// This keeps assets created before the provider switch working without migration.
+    fn normalize_symbol(symbol: &str) -> Result<String, MarketDataError> {
+        let value = symbol.trim();
+        let lower = value.to_ascii_lowercase();
+
+        let normalized = if matches!(value.split_once('.'), Some(("0" | "1" | "116", _))) {
+            value.to_string()
+        } else if let Some(code) = lower.strip_prefix("sh") {
+            format!("1.{}", code)
+        } else if let Some(code) = lower.strip_prefix("sz") {
+            format!("0.{}", code)
+        } else if let Some(code) = lower.strip_prefix("hk") {
+            format!("116.{:0>5}", code)
+        } else if let Some(code) = lower.strip_suffix(".ss") {
+            format!("1.{}", code)
+        } else if let Some(code) = lower.strip_suffix(".sz") {
+            format!("0.{}", code)
+        } else if let Some(code) = lower.strip_suffix(".hk") {
+            format!("116.{:0>5}", code)
+        } else if value.len() == 6 && value.bytes().all(|byte| byte.is_ascii_digit()) {
+            match value.as_bytes()[0] {
+                b'5' | b'6' | b'9' => format!("1.{}", value),
+                b'0' | b'1' | b'2' | b'3' => format!("0.{}", value),
+                _ => return Err(MarketDataError::SymbolNotFound(value.to_string())),
+            }
+        } else if (1..=5).contains(&value.len()) && value.bytes().all(|byte| byte.is_ascii_digit()) {
+            format!("116.{:0>5}", value)
+        } else {
+            return Err(MarketDataError::SymbolNotFound(value.to_string()));
+        };
+
+        Ok(normalized)
     }
 
     fn currency_for_symbol(symbol: &str) -> &'static str {
@@ -152,6 +187,21 @@ mod tests {
     use std::sync::Arc;
 
     #[test] fn provider_id_remains_compatible() { assert_eq!(TencentProvider::new().id(), "TENCENT"); }
+    #[test] fn normalizes_legacy_and_current_symbols() {
+        for (input, expected) in [
+            ("sh601288", "1.601288"),
+            ("sz000001", "0.000001"),
+            ("hk00700", "116.00700"),
+            ("601288.SS", "1.601288"),
+            ("000001.SZ", "0.000001"),
+            ("0700.HK", "116.00700"),
+            ("601288", "1.601288"),
+            ("700", "116.00700"),
+            ("116.00700", "116.00700"),
+        ] {
+            assert_eq!(TencentProvider::normalize_symbol(input).unwrap(), expected);
+        }
+    }
     #[test] fn parses_a_share_quote() {
         let body = QuoteResponse { rc: 0, data: Some(QuoteData { close: Some(1050), high: Some(1055), low: Some(1040), open: Some(1045), volume: Some(123456), timestamp: Some(1_700_000_000) }) };
         let quote = TencentProvider::parse_quote("1.600000", body).unwrap();
