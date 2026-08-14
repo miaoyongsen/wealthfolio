@@ -40,9 +40,9 @@ use wealthfolio_market_data::{
     mic_to_currency, mic_to_exchange_name, yahoo_equity_provider_symbol_to_canonical,
     yahoo_exchange_to_mic, yahoo_suffix_to_mic, AlphaVantageProvider,
     AssetProfile as MarketAssetProfile, BoerseFrankfurtProvider, BondQuoteMetadata, DividendEvent,
-    ExchangeMap, FinnhubProvider, FixtureProvider, MarketDataAppProvider, MetalPriceApiProvider,
-    OpenFigiProvider, ProviderId, ProviderRegistry, Quote as MarketQuote, QuoteContext,
-    QuoteIdentifiers, ResolverChain, SearchResult as MarketSearchResult, SplitEvent,
+    ExchangeMap, FinnhubProvider, FixtureProvider, InstrumentId, MarketDataAppProvider,
+    MetalPriceApiProvider, OpenFigiProvider, ProviderId, ProviderRegistry, Quote as MarketQuote,
+    QuoteContext, QuoteIdentifiers, ResolverChain, SearchResult as MarketSearchResult, SplitEvent,
     TencentProvider, UsTreasuryCalcProvider, YahooProvider,
 };
 
@@ -411,9 +411,22 @@ impl MarketDataClient {
         })?;
 
         // Build provider overrides from asset.provider_config JSON
-        let overrides = asset
+        let mut overrides = asset
             .provider_overrides()
             .and_then(|json| wealthfolio_market_data::ProviderOverrides::from_json(json).ok());
+
+        // Existing FX assets created by older versions persist a Yahoo override
+        // (for example HKDCNY=X). Yahoo is not reliably reachable in mainland
+        // China, so CNY pairs must not inherit that stale provider override.
+        let is_cny_fx = matches!(
+            &instrument,
+            InstrumentId::Fx { quote, .. } if quote.as_ref().eq_ignore_ascii_case("CNY")
+        );
+        if is_cny_fx {
+            if let Some(provider_overrides) = overrides.as_mut() {
+                provider_overrides.overrides.remove(DATA_SOURCE_YAHOO);
+            }
+        }
 
         // Currency hint: prefer asset.quote_ccy, fall back to MIC-derived currency
         let currency_hint: Option<Cow<'static, str>> = if !asset.quote_ccy.is_empty() {
@@ -427,7 +440,11 @@ impl MarketDataClient {
         };
 
         // Preferred provider from asset
-        let preferred_provider: Option<ProviderId> = asset.preferred_provider().map(Cow::Owned);
+        let preferred_provider: Option<ProviderId> = if is_cny_fx {
+            Some(Cow::Borrowed(DATA_SOURCE_TENCENT))
+        } else {
+            asset.preferred_provider().map(Cow::Owned)
+        };
 
         // Convert bond spec to market-data BondQuoteMetadata when available.
         // coupon_rate defaults to 0 for zero-coupon instruments (T-bills).

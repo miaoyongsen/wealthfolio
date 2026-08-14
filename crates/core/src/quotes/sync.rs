@@ -93,6 +93,13 @@ fn market_fetch_end_date(now: DateTime<Utc>, exchange_mic: Option<&str>) -> Naiv
 ///
 /// Priority: sync state `data_source` (if non-empty) → asset `preferred_provider` → Yahoo default.
 fn effective_provider(state: Option<&QuoteSyncState>, asset: &Asset) -> String {
+    // Older CNY FX assets and their sync state can both persist YAHOO. Keep
+    // planning, error reporting, quote-bound lookup, and fetching on the same
+    // domestic provider instead of only overriding the final HTTP request.
+    if asset.kind == AssetKind::Fx && asset.quote_ccy.eq_ignore_ascii_case("CNY") {
+        return DATA_SOURCE_TENCENT.to_string();
+    }
+
     state
         .map(|s| &s.data_source)
         .filter(|ds| !ds.is_empty())
@@ -1713,12 +1720,8 @@ where
                     return Ok(());
                 }
 
-                let mut state = QuoteSyncState::new(
-                    symbol.to_string(),
-                    asset
-                        .preferred_provider()
-                        .unwrap_or_else(|| DATA_SOURCE_YAHOO.to_string()),
-                );
+                let mut state =
+                    QuoteSyncState::new(symbol.to_string(), effective_provider(None, &asset));
                 // is_active is derived from position_closed_date (None = active)
                 // QuoteSyncState::new() already sets position_closed_date = None
                 state.sync_priority = SyncCategory::New.default_priority();
@@ -2780,6 +2783,20 @@ mod tests {
             let state = test_sync_state("YAHOO");
             let asset = test_asset_with_preferred("METAL_PRICE_API");
             assert_eq!(effective_provider(Some(&state), &asset), "YAHOO");
+        }
+
+        #[test]
+        fn cny_fx_ignores_legacy_yahoo_state_and_preference() {
+            let state = test_sync_state(DATA_SOURCE_YAHOO);
+            let mut asset = test_asset_with_preferred(DATA_SOURCE_YAHOO);
+            asset.kind = AssetKind::Fx;
+            asset.quote_ccy = "CNY".to_string();
+
+            assert_eq!(
+                effective_provider(Some(&state), &asset),
+                DATA_SOURCE_TENCENT
+            );
+            assert_eq!(effective_provider(None, &asset), DATA_SOURCE_TENCENT);
         }
     }
 
